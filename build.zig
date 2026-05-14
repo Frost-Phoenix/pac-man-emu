@@ -16,12 +16,26 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const raylib_dep = b.dependency("raylib_zig", .{
+        .target = target,
+        .optimize = optimize,
+
+        .rmodels = false,
+        .linux_display_backend = .Wayland,
+    });
+
+    const raylib = raylib_dep.module("raylib");
+    const raylib_artifact = raylib_dep.artifact("raylib");
+
     const exe = b.addExecutable(.{
         .name = "pac_man_emu",
         .root_module = exe_mod,
     });
 
     exe.root_module.addImport("zig80", zig80.module("zig80"));
+    exe.root_module.addImport("raylib", raylib);
+
+    exe.root_module.linkLibrary(raylib_artifact);
 
     b.installArtifact(exe);
 

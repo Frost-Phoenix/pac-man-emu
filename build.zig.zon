@@ -16,6 +16,10 @@
             .url = "git+https://github.com/frost-phoenix/zig80.git#3380fd298cb7be51faeebff19f39a13fb123049f",
             .hash = "zig80-0.0.0-7EDX2T7AAQAOvF9gNMVDnuCL3SaeSkTIpUffciPBQByC",
         },
+        .raylib_zig = .{
+            .url = "git+https://github.com/raylib-zig/raylib-zig?ref=devel#f25c5173b4c40ef53c7ccf6d8d51ead0892f9f22",
+            .hash = "raylib_zig-6.0.0-KE8REDJ4BQBu7lKwYNt6R4j5ywPeS37zqW6zrtjCcRwH",
+        },
     },
 
     .paths = .{

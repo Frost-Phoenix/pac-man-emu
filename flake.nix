@@ -54,6 +54,14 @@
               zls
 
               zigimports
+
+              wayland-scanner
+
+              glfw
+              libGL
+              alsa-lib
+              libxkbcommon
+              wayland.dev
             ];
 
             env = {
