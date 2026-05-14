@@ -11,10 +11,17 @@ pub fn build(b: *std.Build) void {
         .imports = &.{},
     });
 
+    const zig80 = b.dependency("zig80", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe = b.addExecutable(.{
         .name = "pac_man_emu",
         .root_module = exe_mod,
     });
+
+    exe.root_module.addImport("zig80", zig80.module("zig80"));
 
     b.installArtifact(exe);
 

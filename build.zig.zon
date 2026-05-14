@@ -11,7 +11,12 @@
     .fingerprint = 0x60ed6ecaf29fdd32, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
 
-    .dependencies = .{},
+    .dependencies = .{
+        .zig80 = .{
+            .url = "git+https://github.com/frost-phoenix/zig80.git#3380fd298cb7be51faeebff19f39a13fb123049f",
+            .hash = "zig80-0.0.0-7EDX2T7AAQAOvF9gNMVDnuCL3SaeSkTIpUffciPBQByC",
+        },
+    },
 
     .paths = .{
         "build.zig",
