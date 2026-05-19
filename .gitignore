@@ -5,3 +5,6 @@ zig-pkg/
 result/
 
 ref/
+roms/
+
+*.bin
