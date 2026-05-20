@@ -3,14 +3,12 @@
 const std = @import("std");
 
 const rl = @import("raylib");
-const Z80 = @import("zig80");
 
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 
 const pacman = @import("pacman.zig");
 
-const PacMan = pacman.PacMan;
 const SCREEN_WIDTH = pacman.SCREEN_WIDTH;
 const SCREEN_HEIGHT = pacman.SCREEN_HEIGHT;
 
@@ -27,9 +25,8 @@ var render_texture: rl.RenderTexture2D = undefined;
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
-    var pac: PacMan = try .init(io);
-
-    try pac.dumpMemory(io);
+    try pacman.init(io);
+    try pacman.dumpMemory(io);
 
     rl.initWindow(SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE, "pac-man");
     defer rl.closeWindow();
@@ -37,13 +34,19 @@ pub fn main(init: std.process.Init) !void {
     rl.setTargetFPS(60);
 
     render_texture = try rl.loadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+    defer render_texture.unload();
 
     while (!rl.windowShouldClose()) {
+        update();
         render();
     }
 }
 
 // ********** private functions ********** //
+
+fn update() void {
+    pacman.runNextFrame();
+}
 
 fn render() void {
     { // render game to texture 1:1
