@@ -19,6 +19,7 @@ const SCALE = 3;
 // ********** global vars ********** //
 
 var render_texture: rl.RenderTexture2D = undefined;
+var tile_test: rl.Texture2D = undefined;
 
 // ********** public functions ********** //
 
@@ -32,9 +33,20 @@ pub fn main(init: std.process.Init) !void {
     defer rl.closeWindow();
 
     rl.setTargetFPS(60);
+    rl.setTraceLogLevel(.all);
 
     render_texture = try rl.loadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
     defer render_texture.unload();
+
+    const img: rl.Image = .{
+        .data = &pacman.tile_buff,
+        .width = pacman.TILE_SIZE,
+        .height = pacman.TILE_SIZE,
+        .format = .uncompressed_r8g8b8,
+        .mipmaps = 1,
+    };
+    tile_test = try rl.loadTextureFromImage(img);
+    defer tile_test.unload();
 
     while (!rl.windowShouldClose()) {
         update();
@@ -47,13 +59,15 @@ pub fn main(init: std.process.Init) !void {
 fn update() void {
     pacman.runNextFrame();
 }
-
 fn render() void {
     { // render game to texture 1:1
         render_texture.begin();
         defer render_texture.end();
 
         rl.clearBackground(.light_gray);
+
+        rl.updateTexture(tile_test, &pacman.tile_buff);
+        rl.drawTexture(tile_test, 0, 0, .white);
     }
 
     { // render texture to screen SCALE:1
@@ -66,7 +80,7 @@ fn render() void {
             0,
             0,
             SCREEN_WIDTH,
-            SCREEN_HEIGHT,
+            -SCREEN_HEIGHT,
         );
         const dest: rl.Rectangle = .init(
             0,

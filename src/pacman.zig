@@ -10,8 +10,10 @@ const Z80 = @import("zig80");
 
 // ********** constants ********** //
 
-const TILE_SIZE = 8;
+pub const TILE_SIZE = 8;
 const SPRITE_SIZE = 16;
+
+const BYTE_PER_PIXEL = 3;
 
 const SCREEN_TILE_WIDTH = 28;
 const SCREEN_TILE_HEIGHT = 36;
@@ -40,6 +42,9 @@ var sprite_rom: [4096]u8 = undefined;
 var color_rom: [32]u8 = undefined;
 var palette_rom: [256]u8 = undefined;
 
+// store the tile as RGB8, so 3 butes per pixel
+pub var tile_buff: [TILE_SIZE * TILE_SIZE * BYTE_PER_PIXEL]u8 = undefined;
+
 // ********** callback functions ********** //
 
 fn memRead(addr: u16) u8 {
@@ -65,6 +70,8 @@ fn ioWrite(addr: u16, data: u8) void {
 
 pub fn init(io: Io) !void {
     try loadRoms(io);
+
+    decodeTile(0x00);
 }
 
 pub fn runNextFrame() void {
@@ -91,37 +98,79 @@ pub fn dumpMemory(io: Io) !void {
 
 fn loadRoms(io: Io) !void {
     const base_path = "./roms/midway/";
-    const rom_names = [_][]const u8{
-        "pacman.6e", // code rom 1
-        "pacman.6f", // code rom 2
-        "pacman.6h", // code rom 3
-        "pacman.6j", // code rom 4
-        "pacman.5e", // tile rom
-        "pacman.5f", // sprite rom
-        "82s123.7f", // color rom
-        "82s126.4a", // palette rom
+    const rom_names = enum {
+        @"pacman.6e", // code rom 1
+        @"pacman.6f", // code rom 2
+        @"pacman.6h", // code rom 3
+        @"pacman.6j", // code rom 4
+        @"pacman.5e", // tile rom
+        @"pacman.5f", // sprite rom
+        @"82s123.7f", // color rom
+        @"82s126.4a", // palette rom
     };
 
     const cwd = Dir.cwd();
 
-    inline for (rom_names, 0..) |rom_name, i| {
-        const rom_path = base_path ++ rom_name;
+    inline for (std.enums.values(rom_names), 0..) |rom_name, i| {
+        const rom_path = base_path ++ @tagName(rom_name);
 
         var buff: [4096]u8 = undefined;
         const data = try cwd.readFile(io, rom_path, &buff);
 
-        switch (i) {
-            0...3 => {
+        switch (rom_name) {
+            .@"pacman.6e", .@"pacman.6f", .@"pacman.6h", .@"pacman.6j" => {
                 const start_addr = i * 4096;
                 const end_addr = start_addr + 4096;
 
                 @memcpy(memory[start_addr..end_addr], data);
             },
-            4 => @memcpy(tile_rom[0..tile_rom.len], data),
-            5 => @memcpy(sprite_rom[0..sprite_rom.len], data),
-            6 => @memcpy(color_rom[0..color_rom.len], data),
-            7 => @memcpy(palette_rom[0..palette_rom.len], data),
-            else => unreachable,
+            .@"pacman.5e" => @memcpy(tile_rom[0..tile_rom.len], data),
+            .@"pacman.5f" => @memcpy(sprite_rom[0..sprite_rom.len], data),
+            .@"82s123.7f" => @memcpy(color_rom[0..color_rom.len], data),
+            .@"82s126.4a" => @memcpy(palette_rom[0..palette_rom.len], data),
+        }
+    }
+}
+
+fn decodeTile(_: u8) void {
+    const TILE_BYTES = 16;
+
+    const tile_id: u32 = 1;
+
+    const tile_addr = tile_id * TILE_BYTES;
+    const tile_data = tile_rom[tile_addr .. tile_addr + TILE_BYTES];
+
+    for (tile_data, 0..) |byte, i| {
+        const lower_bits: u4 = @truncate(byte & 0x0f);
+        const upper_bits: u4 = @truncate(byte >> 4);
+
+        const offest: usize = if (i >= TILE_BYTES / 2) 0 else TILE_SIZE / 2;
+
+        for (0..4) |j| {
+            const bit_idx: u2 = @intCast(j);
+            const mask: u4 = @as(u4, 0b1) << bit_idx;
+
+            const lsb = (lower_bits & mask) >> bit_idx;
+            const msb = (upper_bits & mask) >> bit_idx;
+
+            const pixel: u2 = @truncate((msb << 1) | lsb);
+
+            // tmp color for now, pallet decoding later
+            const color: u8 = switch (pixel) {
+                0b00 => 0x00,
+                0b01 => 0x44,
+                0b10 => 0xaa,
+                0b11 => 0xff,
+            };
+
+            const x = TILE_SIZE - (i % TILE_SIZE) - 1;
+            const y = 3 - j + offest;
+
+            const idx = (y * TILE_SIZE + x) * BYTE_PER_PIXEL;
+
+            tile_buff[idx + 0] = color;
+            tile_buff[idx + 1] = color;
+            tile_buff[idx + 2] = color;
         }
     }
 }
