@@ -39,9 +39,9 @@ pub fn main(init: std.process.Init) !void {
     defer render_texture.unload();
 
     const img: rl.Image = .{
-        .data = &pacman.tile_buff,
-        .width = pacman.TILE_SIZE,
-        .height = pacman.TILE_SIZE,
+        .data = &pacman.tile_map,
+        .width = pacman.TILE_SIZE * 16,
+        .height = pacman.TILE_SIZE * 16,
         .format = .uncompressed_r8g8b8,
         .mipmaps = 1,
     };
@@ -66,7 +66,7 @@ fn render() void {
 
         rl.clearBackground(.light_gray);
 
-        rl.updateTexture(tile_test, &pacman.tile_buff);
+        rl.updateTexture(tile_test, &pacman.tile_map);
         rl.drawTexture(tile_test, 0, 0, .white);
     }
 

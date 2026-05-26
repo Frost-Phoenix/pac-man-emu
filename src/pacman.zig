@@ -42,8 +42,28 @@ var sprite_rom: [4096]u8 = undefined;
 var color_rom: [32]u8 = undefined;
 var palette_rom: [256]u8 = undefined;
 
+pub var tiles: [256][TILE_SIZE * TILE_SIZE]u2 = undefined;
+var colors: [32]Color = undefined;
+var palettes: [64][4]u8 = undefined;
+
 // store the tile as RGB8, so 3 butes per pixel
-pub var tile_buff: [TILE_SIZE * TILE_SIZE * BYTE_PER_PIXEL]u8 = undefined;
+pub var tile_map: [256 * TILE_SIZE * TILE_SIZE * BYTE_PER_PIXEL]u8 = undefined;
+
+// ********** types ********** //
+
+const Color = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+
+    fn init(r: u8, g: u8, b: u8) Color {
+        return Color{
+            .r = r,
+            .g = g,
+            .b = b,
+        };
+    }
+};
 
 // ********** callback functions ********** //
 
@@ -71,7 +91,11 @@ fn ioWrite(addr: u16, data: u8) void {
 pub fn init(io: Io) !void {
     try loadRoms(io);
 
-    decodeTile(0x00);
+    loadColors();
+    loadPalettes();
+    loadTiles();
+
+    renderTileMap();
 }
 
 pub fn runNextFrame() void {
@@ -132,10 +156,42 @@ fn loadRoms(io: Io) !void {
     }
 }
 
-fn decodeTile(_: u8) void {
-    const TILE_BYTES = 16;
+fn loadColors() void {
+    for (color_rom, 0..) |byte, i| {
+        var r = byte & 0b111;
+        var g = (byte >> 3) & 0b111;
+        var b = (byte >> 6) & 0b11;
 
-    const tile_id: u32 = 1;
+        r = 0x21 * (r & 0b001) + 0x47 * ((r & 0b010) >> 1) + 0x97 * ((r & 0b100) >> 2);
+        g = 0x21 * (g & 0b001) + 0x47 * ((g & 0b010) >> 1) + 0x97 * ((g & 0b100) >> 2);
+        b = 0x51 * (b & 0b01) + 0xae * ((b & 0b10) >> 1);
+
+        colors[i] = .init(r, g, b);
+    }
+}
+
+fn loadPalettes() void {
+    const PALETTE_BYTES = 4;
+
+    for (0..64) |palette_id| {
+        const idx = palette_id * PALETTE_BYTES;
+        const palette = palette_rom[idx .. idx + PALETTE_BYTES];
+
+        palettes[palette_id][0] = palette[0];
+        palettes[palette_id][1] = palette[1];
+        palettes[palette_id][2] = palette[2];
+        palettes[palette_id][3] = palette[3];
+    }
+}
+
+fn loadTiles() void {
+    for (0..256) |id| {
+        decodeTile(id);
+    }
+}
+
+fn decodeTile(tile_id: usize) void {
+    const TILE_BYTES = 16;
 
     const tile_addr = tile_id * TILE_BYTES;
     const tile_data = tile_rom[tile_addr .. tile_addr + TILE_BYTES];
@@ -155,22 +211,39 @@ fn decodeTile(_: u8) void {
 
             const pixel: u2 = @truncate((msb << 1) | lsb);
 
-            // tmp color for now, pallet decoding later
-            const color: u8 = switch (pixel) {
-                0b00 => 0x00,
-                0b01 => 0x44,
-                0b10 => 0xaa,
-                0b11 => 0xff,
-            };
-
             const x = TILE_SIZE - (i % TILE_SIZE) - 1;
             const y = 3 - j + offest;
 
-            const idx = (y * TILE_SIZE + x) * BYTE_PER_PIXEL;
+            const idx = y * TILE_SIZE + x;
 
-            tile_buff[idx + 0] = color;
-            tile_buff[idx + 1] = color;
-            tile_buff[idx + 2] = color;
+            tiles[tile_id][idx] = pixel;
+        }
+    }
+}
+
+fn renderTileMap() void {
+    const palette = palettes[1];
+
+    for (0..16) |row| {
+        for (0..16) |col| {
+            const id = row * 16 + col;
+            const base_idx = (row * 16 * TILE_SIZE * TILE_SIZE + col * TILE_SIZE) * BYTE_PER_PIXEL;
+
+            const tile = tiles[id];
+
+            for (tile, 0..) |pixel, i| {
+                const color_id = palette[pixel];
+                const color = colors[color_id];
+
+                const x = i % TILE_SIZE;
+                const y = i / TILE_SIZE;
+
+                const idx = base_idx + (y * 16 * TILE_SIZE * 3) + (x * 3);
+
+                tile_map[idx + 0] = color.r;
+                tile_map[idx + 1] = color.g;
+                tile_map[idx + 2] = color.b;
+            }
         }
     }
 }
