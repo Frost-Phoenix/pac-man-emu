@@ -25,6 +25,7 @@ var tile_test: rl.Texture2D = undefined;
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
+    const alloc = init.gpa;
 
     try pacman.init(io);
     try pacman.dumpMemory(io);
@@ -38,10 +39,13 @@ pub fn main(init: std.process.Init) !void {
     render_texture = try rl.loadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
     defer render_texture.unload();
 
+    const tile_map = try pacman.renderTileMap(alloc);
+    defer alloc.free(tile_map);
+
     const img: rl.Image = .{
-        .data = &pacman.tile_map,
-        .width = pacman.TILE_SIZE * 16,
-        .height = pacman.TILE_SIZE * 16,
+        .data = tile_map.ptr,
+        .width = 128,
+        .height = 128,
         .format = .uncompressed_r8g8b8,
         .mipmaps = 1,
     };
@@ -66,7 +70,6 @@ fn render() void {
 
         rl.clearBackground(.light_gray);
 
-        rl.updateTexture(tile_test, &pacman.tile_map);
         rl.drawTexture(tile_test, 0, 0, .white);
     }
 

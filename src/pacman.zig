@@ -10,7 +10,10 @@ const Z80 = @import("zig80");
 
 // ********** constants ********** //
 
-pub const TILE_SIZE = 8;
+const NB_TILE = 256;
+const TILE_SIZE = 8;
+const PIXEL_PER_TILE = TILE_SIZE * TILE_SIZE;
+
 const SPRITE_SIZE = 16;
 
 const BYTE_PER_PIXEL = 3;
@@ -42,12 +45,9 @@ var sprite_rom: [4096]u8 = undefined;
 var color_rom: [32]u8 = undefined;
 var palette_rom: [256]u8 = undefined;
 
-pub var tiles: [256][TILE_SIZE * TILE_SIZE]u2 = undefined;
 var colors: [32]Color = undefined;
 var palettes: [64][4]u8 = undefined;
-
-// store the tile as RGB8, so 3 butes per pixel
-pub var tile_map: [256 * TILE_SIZE * TILE_SIZE * BYTE_PER_PIXEL]u8 = undefined;
+var tiles: [NB_TILE][PIXEL_PER_TILE]u2 = undefined;
 
 // ********** types ********** //
 
@@ -94,8 +94,6 @@ pub fn init(io: Io) !void {
     loadColors();
     loadPalettes();
     loadTiles();
-
-    renderTileMap();
 }
 
 pub fn runNextFrame() void {
@@ -106,16 +104,6 @@ pub fn runNextFrame() void {
 
 pub fn getCycles() u64 {
     return cpu.cycles;
-}
-
-pub fn dumpMemory(io: Io) !void {
-    const cwd = Dir.cwd();
-
-    try cwd.writeFile(io, .{ .data = &memory, .sub_path = "memory.bin" });
-    try cwd.writeFile(io, .{ .data = &sprite_rom, .sub_path = "sprite.bin" });
-    try cwd.writeFile(io, .{ .data = &tile_rom, .sub_path = "tile.bin" });
-    try cwd.writeFile(io, .{ .data = &color_rom, .sub_path = "color.bin" });
-    try cwd.writeFile(io, .{ .data = &palette_rom, .sub_path = "palette.bin" });
 }
 
 // ********** private functions ********** //
@@ -171,21 +159,18 @@ fn loadColors() void {
 }
 
 fn loadPalettes() void {
-    const PALETTE_BYTES = 4;
+    const BYTE_PER_PALETTE = 4;
 
     for (0..64) |palette_id| {
-        const idx = palette_id * PALETTE_BYTES;
-        const palette = palette_rom[idx .. idx + PALETTE_BYTES];
+        const idx = palette_id * BYTE_PER_PALETTE;
+        const palette = palette_rom[idx .. idx + BYTE_PER_PALETTE];
 
-        palettes[palette_id][0] = palette[0];
-        palettes[palette_id][1] = palette[1];
-        palettes[palette_id][2] = palette[2];
-        palettes[palette_id][3] = palette[3];
+        @memcpy(&palettes[palette_id], palette);
     }
 }
 
 fn loadTiles() void {
-    for (0..256) |id| {
+    for (0..NB_TILE) |id| {
         decodeTile(id);
     }
 }
@@ -221,13 +206,29 @@ fn decodeTile(tile_id: usize) void {
     }
 }
 
-fn renderTileMap() void {
+// ********** debug functions ********** //
+
+pub fn dumpMemory(io: Io) !void {
+    const cwd = Dir.cwd();
+
+    try cwd.createDirPath(io, "dump");
+
+    try cwd.writeFile(io, .{ .data = &memory, .sub_path = "dump/memory.bin" });
+    try cwd.writeFile(io, .{ .data = &sprite_rom, .sub_path = "dump/sprite.bin" });
+    try cwd.writeFile(io, .{ .data = &tile_rom, .sub_path = "dump/tile.bin" });
+    try cwd.writeFile(io, .{ .data = &color_rom, .sub_path = "dump/color.bin" });
+    try cwd.writeFile(io, .{ .data = &palette_rom, .sub_path = "dump/palette.bin" });
+}
+
+pub fn renderTileMap(alloc: Allocator) ![]u8 {
+    var buffer = try alloc.alloc(u8, NB_TILE * PIXEL_PER_TILE * BYTE_PER_PIXEL);
+
     const palette = palettes[1];
 
     for (0..16) |row| {
         for (0..16) |col| {
             const id = row * 16 + col;
-            const base_idx = (row * 16 * TILE_SIZE * TILE_SIZE + col * TILE_SIZE) * BYTE_PER_PIXEL;
+            const base_idx = (row * 16 * PIXEL_PER_TILE + col * TILE_SIZE) * BYTE_PER_PIXEL;
 
             const tile = tiles[id];
 
@@ -240,10 +241,12 @@ fn renderTileMap() void {
 
                 const idx = base_idx + (y * 16 * TILE_SIZE * 3) + (x * 3);
 
-                tile_map[idx + 0] = color.r;
-                tile_map[idx + 1] = color.g;
-                tile_map[idx + 2] = color.b;
+                buffer[idx + 0] = color.r;
+                buffer[idx + 1] = color.g;
+                buffer[idx + 2] = color.b;
             }
         }
     }
+
+    return buffer;
 }
