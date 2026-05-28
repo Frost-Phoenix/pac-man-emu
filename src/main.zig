@@ -20,6 +20,7 @@ const SCALE = 3;
 
 var render_texture: rl.RenderTexture2D = undefined;
 var tile_test: rl.Texture2D = undefined;
+var sprite_test: rl.Texture2D = undefined;
 
 // ********** public functions ********** //
 
@@ -42,15 +43,28 @@ pub fn main(init: std.process.Init) !void {
     const tile_map = try pacman.renderTileMap(alloc);
     defer alloc.free(tile_map);
 
-    const img: rl.Image = .{
+    const img_tiles: rl.Image = .{
         .data = tile_map.ptr,
         .width = 128,
         .height = 128,
         .format = .uncompressed_r8g8b8,
         .mipmaps = 1,
     };
-    tile_test = try rl.loadTextureFromImage(img);
+    tile_test = try rl.loadTextureFromImage(img_tiles);
     defer tile_test.unload();
+
+    const sprite_map = try pacman.renderSprite(alloc, 0);
+    defer alloc.free(sprite_map);
+
+    const img_sprites: rl.Image = .{
+        .data = sprite_map.ptr,
+        .width = 16,
+        .height = 16,
+        .format = .uncompressed_r8g8b8,
+        .mipmaps = 1,
+    };
+    sprite_test = try rl.loadTextureFromImage(img_sprites);
+    defer sprite_test.unload();
 
     while (!rl.windowShouldClose()) {
         update();
@@ -71,6 +85,7 @@ fn render() void {
         rl.clearBackground(.light_gray);
 
         rl.drawTexture(tile_test, 0, 0, .white);
+        rl.drawTexture(sprite_test, 50, 150, .white);
     }
 
     { // render texture to screen SCALE:1

@@ -10,11 +10,13 @@ const Z80 = @import("zig80");
 
 // ********** constants ********** //
 
-const NB_TILE = 256;
+const TILE_NB = 256;
 const TILE_SIZE = 8;
-const PIXEL_PER_TILE = TILE_SIZE * TILE_SIZE;
+const TILE_NB_PIXEL = TILE_SIZE * TILE_SIZE;
 
+const SPRITE_NB = 256;
 const SPRITE_SIZE = 16;
+const SPRITE_NB_PIXEL = SPRITE_SIZE * SPRITE_SIZE;
 
 const BYTE_PER_PIXEL = 3;
 
@@ -47,7 +49,8 @@ var palette_rom: [256]u8 = undefined;
 
 var colors: [32]Color = undefined;
 var palettes: [64][4]u8 = undefined;
-var tiles: [NB_TILE][PIXEL_PER_TILE]u2 = undefined;
+var tiles: [TILE_NB][TILE_NB_PIXEL]u2 = undefined;
+var sprites: [SPRITE_NB][SPRITE_NB_PIXEL]u2 = undefined;
 
 // ********** types ********** //
 
@@ -170,7 +173,7 @@ fn loadPalettes() void {
 }
 
 fn loadTiles() void {
-    for (0..NB_TILE) |id| {
+    for (0..TILE_NB) |id| {
         decodeTile(id);
     }
 }
@@ -178,31 +181,63 @@ fn loadTiles() void {
 fn decodeTile(tile_id: usize) void {
     const TILE_BYTES = 16;
 
+    const tile = &tiles[tile_id];
     const tile_addr = tile_id * TILE_BYTES;
     const tile_data = tile_rom[tile_addr .. tile_addr + TILE_BYTES];
 
     for (tile_data, 0..) |byte, i| {
-        const lower_bits: u4 = @truncate(byte & 0x0f);
-        const upper_bits: u4 = @truncate(byte >> 4);
-
         const offest: usize = if (i >= TILE_BYTES / 2) 0 else TILE_SIZE / 2;
 
-        for (0..4) |j| {
-            const bit_idx: u2 = @intCast(j);
-            const mask: u4 = @as(u4, 0b1) << bit_idx;
+        const x = TILE_SIZE - (i % TILE_SIZE) - 1;
+        const y = TILE_SIZE / 2 + offest - 1;
 
-            const lsb = (lower_bits & mask) >> bit_idx;
-            const msb = (upper_bits & mask) >> bit_idx;
+        const idx = y * TILE_SIZE + x;
 
-            const pixel: u2 = @truncate((msb << 1) | lsb);
+        decodeStrip(byte, tile, TILE_SIZE, idx);
+    }
+}
 
-            const x = TILE_SIZE - (i % TILE_SIZE) - 1;
-            const y = 3 - j + offest;
+fn decodeSprite(sprite_id: usize, buff: []u2) void {
+    const SPRITE_BYTES = 64;
 
-            const idx = y * TILE_SIZE + x;
+    const sprite_addr = sprite_id * SPRITE_BYTES;
+    const sprite_data = sprite_rom[sprite_addr .. sprite_addr + SPRITE_BYTES];
 
-            tiles[tile_id][idx] = pixel;
-        }
+    for (sprite_data, 0..) |byte, i| {
+        const x: usize, const y: usize = switch (i) {
+            0...7 => .{ SPRITE_SIZE - 1 - i % 8, 15 },
+            8...15 => .{ SPRITE_SIZE - 1 - i % 8, 3 },
+            16...23 => .{ SPRITE_SIZE - 1 - i % 8, 7 },
+            24...31 => .{ SPRITE_SIZE - 1 - i % 8, 11 },
+            32...39 => .{ SPRITE_SIZE / 2 - 1 - i % 8, 15 },
+            40...47 => .{ SPRITE_SIZE / 2 - 1 - i % 8, 3 },
+            48...55 => .{ SPRITE_SIZE / 2 - 1 - i % 8, 7 },
+            56...63 => .{ SPRITE_SIZE / 2 - 1 - i % 8, 11 },
+            else => unreachable,
+        };
+
+        const idx = y * SPRITE_SIZE + x;
+
+        decodeStrip(byte, buff, SPRITE_SIZE, idx);
+    }
+}
+
+fn decodeStrip(byte: u8, buff: []u2, size: usize, start: usize) void {
+    const lower_bits: u4 = @truncate(byte & 0x0f);
+    const upper_bits: u4 = @truncate(byte >> 4);
+
+    for (0..4) |i| {
+        const bit_idx: u2 = @intCast(i);
+        const mask: u4 = @as(u4, 0b1) << bit_idx;
+
+        const lsb = (lower_bits & mask) >> bit_idx;
+        const msb = (upper_bits & mask) >> bit_idx;
+
+        const pixel: u2 = @truncate((msb << 1) | lsb);
+
+        const idx = start - i * size;
+
+        buff[idx] = pixel;
     }
 }
 
@@ -221,14 +256,14 @@ pub fn dumpMemory(io: Io) !void {
 }
 
 pub fn renderTileMap(alloc: Allocator) ![]u8 {
-    var buffer = try alloc.alloc(u8, NB_TILE * PIXEL_PER_TILE * BYTE_PER_PIXEL);
+    const buffer = try alloc.alloc(u8, TILE_NB * TILE_NB_PIXEL * BYTE_PER_PIXEL);
 
     const palette = palettes[1];
 
     for (0..16) |row| {
         for (0..16) |col| {
             const id = row * 16 + col;
-            const base_idx = (row * 16 * PIXEL_PER_TILE + col * TILE_SIZE) * BYTE_PER_PIXEL;
+            const base_idx = (row * 16 * TILE_NB_PIXEL + col * TILE_SIZE) * BYTE_PER_PIXEL;
 
             const tile = tiles[id];
 
@@ -246,6 +281,31 @@ pub fn renderTileMap(alloc: Allocator) ![]u8 {
                 buffer[idx + 2] = color.b;
             }
         }
+    }
+
+    return buffer;
+}
+
+pub fn renderSprite(alloc: Allocator, sprite_id: usize) ![]u8 {
+    const buffer = try alloc.alloc(u8, SPRITE_NB_PIXEL * BYTE_PER_PIXEL);
+
+    var sprite_buff: [SPRITE_NB_PIXEL]u2 = @splat(0);
+    decodeSprite(sprite_id, &sprite_buff);
+
+    const palette = palettes[1];
+
+    for (sprite_buff, 0..) |pixel, i| {
+        const color_id = palette[pixel];
+        const color = colors[color_id];
+
+        const x = i % SPRITE_SIZE;
+        const y = i / SPRITE_SIZE;
+
+        const idx = (y * SPRITE_SIZE * 3) + (x * 3);
+
+        buffer[idx + 0] = color.r;
+        buffer[idx + 1] = color.g;
+        buffer[idx + 2] = color.b;
     }
 
     return buffer;
