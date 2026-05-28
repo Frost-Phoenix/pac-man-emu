@@ -53,13 +53,13 @@ pub fn main(init: std.process.Init) !void {
     tile_test = try rl.loadTextureFromImage(img_tiles);
     defer tile_test.unload();
 
-    const sprite_map = try pacman.renderSprite(alloc, 0);
+    const sprite_map = try pacman.renderSprite(alloc);
     defer alloc.free(sprite_map);
 
     const img_sprites: rl.Image = .{
         .data = sprite_map.ptr,
-        .width = 16,
-        .height = 16,
+        .width = 128,
+        .height = 128,
         .format = .uncompressed_r8g8b8,
         .mipmaps = 1,
     };
@@ -77,6 +77,7 @@ pub fn main(init: std.process.Init) !void {
 fn update() void {
     pacman.runNextFrame();
 }
+
 fn render() void {
     { // render game to texture 1:1
         render_texture.begin();
@@ -85,7 +86,7 @@ fn render() void {
         rl.clearBackground(.light_gray);
 
         rl.drawTexture(tile_test, 0, 0, .white);
-        rl.drawTexture(sprite_test, 50, 150, .white);
+        rl.drawTexture(sprite_test, 0, 135, .white);
     }
 
     { // render texture to screen SCALE:1
