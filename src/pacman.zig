@@ -26,9 +26,9 @@ const SCREEN_TILE_HEIGHT = 36;
 pub const SCREEN_WIDTH = SCREEN_TILE_WIDTH * TILE_SIZE;
 pub const SCREEN_HEIGHT = SCREEN_TILE_HEIGHT * TILE_SIZE;
 
+const FPS = 60.61;
 const CLOCK_SPEED = 3_072_000; // 3.072 MHz
-const FPS = 60; // suposed to be 60.61
-const CYCLES_PER_FRAMES = CLOCK_SPEED / FPS;
+const CYCLES_PER_FRAMES = @divTrunc(CLOCK_SPEED, FPS);
 
 // ********** global vars ********** //
 
@@ -55,6 +55,9 @@ var sprites: [SPRITE_NB][SPRITE_NB_PIXEL]u2 = undefined;
 
 pub var frame_buffer: [SCREEN_WIDTH * SCREEN_HEIGHT * BYTE_PER_PIXEL]u8 = undefined;
 
+var vblank_enabled: bool = false;
+var vblank_data: u8 = 0;
+
 // ********** types ********** //
 
 const Color = struct {
@@ -74,22 +77,55 @@ const Color = struct {
 // ********** callback functions ********** //
 
 fn memRead(addr: u16) u8 {
-    return memory[addr];
+    return switch (addr) {
+        0x0000...0x4FFF => memory[addr],
+        0x5000...0x503f => @panic("IN0 read"), // IN0
+        0x5040...0x507f => @panic("IN1 read"), // IN1
+        0x5080...0x50bf => @panic("DIP switch read"), // DIP switch
+
+        else => {
+            std.log.err("invalid read at 0x{x:0>4}", .{addr});
+            return 0xff;
+        },
+    };
 }
 
 fn memWrite(addr: u16, data: u8) void {
-    memory[addr] = data;
+    switch (addr) {
+        0x0000...0x3fff => std.log.err("Trying to write ROM at: 0x{x:0>4}", .{addr}),
+        0x4000...0x4fff => memory[addr] = data,
+        0x5000 => vblank_enabled = data & 0b1 == 1,
+        0x5001 => std.log.warn("Sound enable write", .{}),
+        0x5002 => std.log.warn("Aux board enable write", .{}),
+        0x5003 => std.log.warn("Flip screen write", .{}),
+        0x5004 => std.log.warn("player 1 start light write", .{}),
+        0x5005 => std.log.warn("player 2 start light write", .{}),
+        0x5006 => std.log.warn("Coin lockout write", .{}),
+        0x5007 => std.log.warn("Coin counter write", .{}),
+        0x5040 => std.log.warn("Sound registers write", .{}),
+        0x5060 => std.log.warn("Sprite coordinates write", .{}),
+        0x50C0 => std.log.warn("Watchdog timer write", .{}),
+
+        else => std.log.err("Invalid write at: 0x{x:0>4}", .{addr}),
+    }
 }
 
 fn ioRead(addr: u16) u8 {
-    _ = addr;
+    const port: u8 = @truncate(addr & 0xff);
+
+    std.log.err("IO read on port: {}", .{port});
 
     return 0x00;
 }
 
 fn ioWrite(addr: u16, data: u8) void {
-    _ = addr;
-    _ = data;
+    const port: u8 = @truncate(addr & 0xff);
+
+    if (port == 0) {
+        vblank_data = data;
+    } else {
+        std.log.err("IO write on port: {}", .{port});
+    }
 }
 
 // ********** public functions ********** //
@@ -109,6 +145,10 @@ pub fn runNextFrame() void {
     }
 
     renderFrame();
+
+    if (vblank_enabled) {
+        cpu.requestINT(vblank_data);
+    }
 }
 
 pub fn getCycles() u64 {
@@ -266,16 +306,6 @@ fn renderFrame() void {
 fn renderTiles() void {
     const vram_tile_addr = 0x4000;
     const vram_palette_addr = 0x4400;
-
-    for (0x040..0x3bf) |i| {
-        memory[vram_tile_addr + i] = @truncate(i - 0x040);
-        memory[vram_palette_addr + i] = 1;
-    }
-
-    for (0x0..0x040) |i| {
-        memory[vram_tile_addr + i] = @truncate(i);
-        memory[vram_palette_addr + i] = 1;
-    }
 
     // top and bottom lines
     inline for ([_]enum { top, bottom }{ .top, .bottom }) |v| {
