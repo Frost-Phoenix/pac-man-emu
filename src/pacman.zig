@@ -140,9 +140,10 @@ pub fn init(io: Io) !void {
 }
 
 pub fn runNextFrame() void {
-    for (0..CYCLES_PER_FRAMES) |_| {
+    while (cpu.cycles < CYCLES_PER_FRAMES) {
         cpu.step();
     }
+    cpu.cycles -= CYCLES_PER_FRAMES;
 
     renderFrame();
 
