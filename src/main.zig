@@ -19,14 +19,13 @@ const SCALE = 3;
 // ********** global vars ********** //
 
 var render_texture: rl.RenderTexture2D = undefined;
-var tile_test: rl.Texture2D = undefined;
-var sprite_test: rl.Texture2D = undefined;
+var game_texture: rl.Texture2D = undefined;
 
 // ********** public functions ********** //
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
-    const alloc = init.gpa;
+    // const alloc = init.gpa;
 
     try pacman.init(io);
     try pacman.dumpMemory(io);
@@ -40,31 +39,15 @@ pub fn main(init: std.process.Init) !void {
     render_texture = try rl.loadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
     defer render_texture.unload();
 
-    const tile_map = try pacman.renderTileMap(alloc);
-    defer alloc.free(tile_map);
-
-    const img_tiles: rl.Image = .{
-        .data = tile_map.ptr,
-        .width = 128,
-        .height = 128,
+    const img: rl.Image = .{
+        .data = &pacman.frame_buffer,
+        .width = pacman.SCREEN_WIDTH,
+        .height = pacman.SCREEN_HEIGHT,
         .format = .uncompressed_r8g8b8,
         .mipmaps = 1,
     };
-    tile_test = try rl.loadTextureFromImage(img_tiles);
-    defer tile_test.unload();
-
-    const sprite_map = try pacman.renderSprite(alloc);
-    defer alloc.free(sprite_map);
-
-    const img_sprites: rl.Image = .{
-        .data = sprite_map.ptr,
-        .width = 128,
-        .height = 128,
-        .format = .uncompressed_r8g8b8,
-        .mipmaps = 1,
-    };
-    sprite_test = try rl.loadTextureFromImage(img_sprites);
-    defer sprite_test.unload();
+    game_texture = try rl.loadTextureFromImage(img);
+    defer game_texture.unload();
 
     while (!rl.windowShouldClose()) {
         update();
@@ -85,8 +68,8 @@ fn render() void {
 
         rl.clearBackground(.light_gray);
 
-        rl.drawTexture(tile_test, 0, 0, .white);
-        rl.drawTexture(sprite_test, 0, 135, .white);
+        rl.updateTexture(game_texture, &pacman.frame_buffer);
+        rl.drawTexture(game_texture, 0, 0, .white);
     }
 
     { // render texture to screen SCALE:1

@@ -49,8 +49,11 @@ var palette_rom: [256]u8 = undefined;
 
 var colors: [32]Color = undefined;
 var palettes: [64][4]u8 = undefined;
+
 var tiles: [TILE_NB][TILE_NB_PIXEL]u2 = undefined;
 var sprites: [SPRITE_NB][SPRITE_NB_PIXEL]u2 = undefined;
+
+pub var frame_buffer: [SCREEN_WIDTH * SCREEN_HEIGHT * BYTE_PER_PIXEL]u8 = undefined;
 
 // ********** types ********** //
 
@@ -104,6 +107,8 @@ pub fn runNextFrame() void {
     for (0..CYCLES_PER_FRAMES) |_| {
         cpu.step();
     }
+
+    renderFrame();
 }
 
 pub fn getCycles() u64 {
@@ -251,6 +256,80 @@ fn decodeStrip(
         const idx = start - i * size;
 
         buff[idx] = pixel;
+    }
+}
+
+fn renderFrame() void {
+    renderTiles();
+}
+
+fn renderTiles() void {
+    const vram_tile_addr = 0x4000;
+    const vram_palette_addr = 0x4400;
+
+    for (0x040..0x3bf) |i| {
+        memory[vram_tile_addr + i] = @truncate(i - 0x040);
+        memory[vram_palette_addr + i] = 1;
+    }
+
+    for (0x0..0x040) |i| {
+        memory[vram_tile_addr + i] = @truncate(i);
+        memory[vram_palette_addr + i] = 1;
+    }
+
+    // top and bottom lines
+    inline for ([_]enum { top, bottom }{ .top, .bottom }) |v| {
+        const row, const start_addr = switch (v) {
+            .top => .{ 0, 0x3c2 },
+            .bottom => .{ SCREEN_TILE_HEIGHT - 2, 0x002 },
+        };
+
+        for (0..SCREEN_TILE_WIDTH) |col| {
+            for (0..2) |i| {
+                const offset = 0x020 * i;
+                const addr = start_addr + SCREEN_TILE_WIDTH - col - 1 + offset;
+
+                const tile_id = memory[vram_tile_addr + addr];
+                const palette_id = memory[vram_palette_addr + addr];
+
+                const base_idx = row * SCREEN_WIDTH * TILE_SIZE + col * TILE_SIZE;
+
+                renderTile(tile_id, palette_id, base_idx + (SCREEN_WIDTH * TILE_SIZE * i));
+            }
+        }
+    }
+
+    // game grid
+    for (0..SCREEN_TILE_WIDTH) |col| {
+        const start_addr = 0x3a0 - 0x020 * col;
+
+        for (2..SCREEN_TILE_HEIGHT - 2) |row| {
+            const tile_id = memory[vram_tile_addr + start_addr + (row - 2)];
+            const palette_id = memory[vram_palette_addr + start_addr + (row - 2)];
+
+            const base_idx = row * SCREEN_WIDTH * TILE_SIZE + col * TILE_SIZE;
+
+            renderTile(tile_id, palette_id, base_idx);
+        }
+    }
+}
+
+fn renderTile(tile_id: u8, palette_id: u8, base_idx: usize) void {
+    const tile = tiles[tile_id];
+    const palette = palettes[palette_id];
+
+    for (tile, 0..) |pixel, j| {
+        const color_id = palette[pixel];
+        const color = colors[color_id];
+
+        const x = j % TILE_SIZE;
+        const y = j / TILE_SIZE;
+
+        const idx = (base_idx + y * SCREEN_WIDTH + x) * BYTE_PER_PIXEL;
+
+        frame_buffer[idx + 0] = color.r;
+        frame_buffer[idx + 1] = color.g;
+        frame_buffer[idx + 2] = color.b;
     }
 }
 
