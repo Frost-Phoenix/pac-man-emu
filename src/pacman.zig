@@ -347,7 +347,7 @@ fn renderTiles() void {
 
 fn renderTile(tile_id: u8, palette_id: u8, base_idx: usize) void {
     const tile = tiles[tile_id];
-    const palette = palettes[palette_id];
+    const palette = palettes[palette_id & 0x3f];
 
     for (tile, 0..) |pixel, j| {
         const color_id = palette[pixel];
