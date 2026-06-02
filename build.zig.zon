@@ -13,8 +13,8 @@
 
     .dependencies = .{
         .zig80 = .{
-            .url = "git+https://github.com/frost-phoenix/zig80.git#3380fd298cb7be51faeebff19f39a13fb123049f",
-            .hash = "zig80-0.0.0-7EDX2T7AAQAOvF9gNMVDnuCL3SaeSkTIpUffciPBQByC",
+            .url = "git+https://github.com/frost-phoenix/zig80.git#41597e4cd39c5bfb1de6c0c616a658f9e8675a7f",
+            .hash = "zig80-0.0.0-7EDX2VPAAQBj_wnT0xBq8Z-Yu1LI7_829qwNsNefxRuZ",
         },
         .raylib_zig = .{
             .url = "git+https://github.com/raylib-zig/raylib-zig?ref=devel#f25c5173b4c40ef53c7ccf6d8d51ead0892f9f22",
