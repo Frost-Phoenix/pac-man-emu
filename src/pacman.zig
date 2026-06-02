@@ -58,6 +58,9 @@ pub var frame_buffer: [SCREEN_WIDTH * SCREEN_HEIGHT * BYTE_PER_PIXEL]u8 = undefi
 var vblank_enabled: bool = false;
 var vblank_data: u8 = 0;
 
+var in0: IN0 = .init();
+var in1: IN1 = .init();
+
 // ********** types ********** //
 
 const Color = struct {
@@ -74,26 +77,66 @@ const Color = struct {
     }
 };
 
+const IN0 = packed struct(u8) {
+    up: u1 = 1,
+    left: u1 = 1,
+    right: u1 = 1,
+    down: u1 = 1,
+    rack_advance: u1 = 1,
+    coin_slot_1: u1 = 0,
+    coin_slot_2: u1 = 0,
+    credit_button: u1 = 1,
+
+    fn init() IN0 {
+        return IN0{};
+    }
+
+    fn getByte(self: IN0) u8 {
+        return @bitCast(self);
+    }
+};
+
+const IN1 = packed struct(u8) {
+    p2_up: u1 = 1,
+    p2_left: u1 = 1,
+    p2_right: u1 = 1,
+    p2_down: u1 = 1,
+    board_test: u1 = 1,
+    p1_start: u1 = 1,
+    p2_start: u1 = 1,
+    cabinet_mode: u1 = 1,
+
+    fn init() IN1 {
+        return IN1{};
+    }
+
+    fn getByte(self: IN1) u8 {
+        return @bitCast(self);
+    }
+};
+
 // ********** callback functions ********** //
 
 fn memRead(addr: u16) u8 {
     return switch (addr) {
         0x0000...0x4FFF => memory[addr],
-        0x5000...0x503f => @panic("IN0 read"), // IN0
-        0x5040...0x507f => @panic("IN1 read"), // IN1
-        0x5080...0x50bf => @panic("DIP switch read"), // DIP switch
+        0x5000...0x503f => in0.getByte(), // IN0
+        0x5040...0x507f => in1.getByte(), // IN1
+        0x5080...0x50bf => 0xff, // DIP switch
 
         else => {
-            std.log.err("invalid read at 0x{x:0>4}", .{addr});
+            std.log.err("Invalid read at: 0x{x:0>4}", .{addr});
             return 0xff;
         },
     };
 }
 
 fn memWrite(addr: u16, data: u8) void {
-    switch (addr) {
-        0x0000...0x3fff => std.log.err("Trying to write ROM at: 0x{x:0>4}", .{addr}),
-        0x4000...0x4fff => memory[addr] = data,
+    const clamped_addr = addr & 0x7fff; // no a15 address line
+
+    switch (clamped_addr) {
+        0x0000...0x3fff => std.log.err("Trying to write ROM at: 0x{x:0>4}", .{clamped_addr}),
+        0x4000...0x4fff => memory[clamped_addr] = data,
         0x5000 => vblank_enabled = data & 0b1 == 1,
         0x5001 => std.log.warn("Sound enable write", .{}),
         0x5002 => std.log.warn("Aux board enable write", .{}),
@@ -102,11 +145,11 @@ fn memWrite(addr: u16, data: u8) void {
         0x5005 => std.log.warn("player 2 start light write", .{}),
         0x5006 => std.log.warn("Coin lockout write", .{}),
         0x5007 => std.log.warn("Coin counter write", .{}),
-        0x5040 => std.log.warn("Sound registers write", .{}),
-        0x5060 => std.log.warn("Sprite coordinates write", .{}),
-        0x50C0 => std.log.warn("Watchdog timer write", .{}),
+        0x5040...0x505f => std.log.warn("Sound registers write", .{}),
+        0x5060...0x506f => std.log.warn("Sprite coordinates write", .{}),
+        0x50C0...0x50ff => {}, // std.log.warn("Watchdog timer write", .{}),
 
-        else => std.log.err("Invalid write at: 0x{x:0>4}", .{addr}),
+        else => std.log.err("Invalid write at: 0x{x:0>4}", .{clamped_addr}),
     }
 }
 
@@ -160,6 +203,9 @@ pub fn getCycles() u64 {
 
 fn loadRoms(io: Io) !void {
     const base_path = "./roms/midway/";
+    // const base_path = "./roms/hello/";
+    // const base_path = "./roms/matrix/";
+
     const rom_names = enum {
         @"pacman.6e", // code rom 1
         @"pacman.6f", // code rom 2
@@ -320,8 +366,8 @@ fn renderTiles() void {
                 const offset = 0x020 * i;
                 const addr = start_addr + SCREEN_TILE_WIDTH - col - 1 + offset;
 
-                const tile_id = memory[vram_tile_addr + addr];
-                const palette_id = memory[vram_palette_addr + addr];
+                const tile_id = memRead(@intCast(vram_tile_addr + addr));
+                const palette_id = memRead(@intCast(vram_palette_addr + addr));
 
                 const base_idx = row * SCREEN_WIDTH * TILE_SIZE + col * TILE_SIZE;
 
@@ -335,8 +381,8 @@ fn renderTiles() void {
         const start_addr = 0x3a0 - 0x020 * col;
 
         for (2..SCREEN_TILE_HEIGHT - 2) |row| {
-            const tile_id = memory[vram_tile_addr + start_addr + (row - 2)];
-            const palette_id = memory[vram_palette_addr + start_addr + (row - 2)];
+            const tile_id = memRead(@intCast(vram_tile_addr + start_addr + (row - 2)));
+            const palette_id = memRead(@intCast(vram_palette_addr + start_addr + (row - 2)));
 
             const base_idx = row * SCREEN_WIDTH * TILE_SIZE + col * TILE_SIZE;
 
