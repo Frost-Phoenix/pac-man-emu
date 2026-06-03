@@ -2,6 +2,8 @@
 
 const std = @import("std");
 
+const log = std.log;
+
 const Io = std.Io;
 const Dir = Io.Dir;
 const Allocator = std.mem.Allocator;
@@ -52,6 +54,8 @@ var palettes: [64][4]u8 = undefined;
 
 var tiles: [TILE_NB][TILE_NB_PIXEL]u2 = undefined;
 var sprites: [SPRITE_NB][SPRITE_NB_PIXEL]u2 = undefined;
+
+var sprites_coordinates: [16]u8 = @splat(0);
 
 pub var frame_buffer: [SCREEN_WIDTH * SCREEN_HEIGHT * BYTE_PER_PIXEL]u8 = undefined;
 
@@ -125,7 +129,7 @@ fn memRead(addr: u16) u8 {
         0x5080...0x50bf => 0xff, // DIP switch
 
         else => {
-            std.log.err("Invalid read at: 0x{x:0>4}", .{addr});
+            log.err("Invalid read at: 0x{x:0>4}", .{addr});
             return 0xff;
         },
     };
@@ -135,28 +139,28 @@ fn memWrite(addr: u16, data: u8) void {
     const clamped_addr = addr & 0x7fff; // no a15 address line
 
     switch (clamped_addr) {
-        0x0000...0x3fff => std.log.err("Trying to write ROM at: 0x{x:0>4}", .{clamped_addr}),
+        0x0000...0x3fff => log.err("Trying to write ROM at: 0x{x:0>4}", .{clamped_addr}),
         0x4000...0x4fff => memory[clamped_addr] = data,
         0x5000 => vblank_enabled = data & 0b1 == 1,
-        0x5001 => std.log.warn("Sound enable write", .{}),
-        0x5002 => std.log.warn("Aux board enable write", .{}),
-        0x5003 => std.log.warn("Flip screen write", .{}),
-        0x5004 => std.log.warn("player 1 start light write", .{}),
-        0x5005 => std.log.warn("player 2 start light write", .{}),
-        0x5006 => std.log.warn("Coin lockout write", .{}),
-        0x5007 => std.log.warn("Coin counter write", .{}),
-        0x5040...0x505f => std.log.warn("Sound registers write", .{}),
-        0x5060...0x506f => std.log.warn("Sprite coordinates write", .{}),
-        0x50C0...0x50ff => {}, // std.log.warn("Watchdog timer write", .{}),
+        0x5001 => log.warn("Sound enable write", .{}),
+        0x5002 => log.warn("Aux board enable write", .{}),
+        0x5003 => log.warn("Flip screen write", .{}),
+        0x5004 => log.warn("player 1 start light write", .{}),
+        0x5005 => log.warn("player 2 start light write", .{}),
+        0x5006 => log.warn("Coin lockout write", .{}),
+        0x5007 => log.warn("Coin counter write", .{}),
+        0x5040...0x505f => log.warn("Sound registers write", .{}),
+        0x5060...0x506f => sprites_coordinates[clamped_addr - 0x5060] = data,
+        0x50C0...0x50ff => {}, // log.warn("Watchdog timer write", .{}),
 
-        else => std.log.err("Invalid write at: 0x{x:0>4}", .{clamped_addr}),
+        else => log.err("Invalid write at: 0x{x:0>4}", .{clamped_addr}),
     }
 }
 
 fn ioRead(addr: u16) u8 {
     const port: u8 = @truncate(addr & 0xff);
 
-    std.log.err("IO read on port: {}", .{port});
+    log.err("IO read on port: {}", .{port});
 
     return 0x00;
 }
@@ -167,7 +171,7 @@ fn ioWrite(addr: u16, data: u8) void {
     if (port == 0) {
         vblank_data = data;
     } else {
-        std.log.err("IO write on port: {}", .{port});
+        log.err("IO write on port: {}", .{port});
     }
 }
 
@@ -348,6 +352,7 @@ fn decodeStrip(
 
 fn renderFrame() void {
     renderTiles();
+    renderSprites();
 }
 
 fn renderTiles() void {
@@ -410,6 +415,61 @@ fn renderTile(tile_id: u8, palette_id: u8, base_idx: usize) void {
     }
 }
 
+fn renderSprites() void {
+    for (&[_]u16{ 7, 6, 5, 4, 3, 2, 1, 0 }) |i| {
+        const idx = i * 2;
+
+        const x: i32 = sprites_coordinates[idx];
+        const y: i32 = sprites_coordinates[idx + 1];
+
+        const screen_x = SCREEN_WIDTH - x + 15;
+        const screen_y = SCREEN_HEIGHT - y - 16;
+
+        const sprite_data = memRead(0x4ff0 + idx);
+        const palette_id = memRead(0x4ff0 + idx + 1);
+
+        const sprite_id = sprite_data >> 2;
+        const flip_x = (sprite_data >> 1) & 1 == 1;
+        const flip_y = sprite_data & 1 == 1;
+
+        renderSprite(sprite_id, screen_x, screen_y, palette_id, flip_x, flip_y);
+    }
+}
+
+fn renderSprite(
+    sprite_id: u8,
+    x: i32,
+    y: i32,
+    palette_id: u8,
+    flip_x: bool,
+    flip_y: bool,
+) void {
+    const sprite = sprites[sprite_id];
+    const palette = palettes[palette_id & 0x3f];
+
+    for (sprite, 0..) |pixel, i| {
+        const color_id = palette[pixel];
+        const color = colors[color_id];
+
+        if (color_id == 0) continue;
+
+        const dx: i32 = @intCast(i % SPRITE_SIZE);
+        const dy: i32 = @intCast(i / SPRITE_SIZE);
+
+        const pixel_x = if (flip_x) x + 15 - dx else x + dx;
+        const pixel_y = if (flip_y) y + 15 - dy else y + dy;
+
+        if (pixel_x < 0 or pixel_x >= SCREEN_WIDTH) continue;
+        if (pixel_y < 16 or pixel_y >= SCREEN_HEIGHT - 16) continue;
+
+        const idx = (pixel_y * SCREEN_WIDTH + pixel_x) * BYTE_PER_PIXEL;
+
+        frame_buffer[@intCast(idx + 0)] = color.r;
+        frame_buffer[@intCast(idx + 1)] = color.g;
+        frame_buffer[@intCast(idx + 2)] = color.b;
+    }
+}
+
 // ********** debug functions ********** //
 
 pub fn dumpMemory(io: Io) !void {
@@ -432,7 +492,7 @@ pub fn renderTileMap(alloc: Allocator) ![]u8 {
     return buffer;
 }
 
-pub fn renderSprite(alloc: Allocator) ![]u8 {
+pub fn renderSpriteMap(alloc: Allocator) ![]u8 {
     const buffer = try alloc.alloc(u8, SPRITE_NB * SPRITE_NB_PIXEL * BYTE_PER_PIXEL);
 
     renderMap(buffer, .sprite);
