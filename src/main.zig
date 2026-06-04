@@ -58,7 +58,25 @@ pub fn main(init: std.process.Init) !void {
 // ********** private functions ********** //
 
 fn update() void {
+    updateInputs();
+
     pacman.runNextFrame();
+}
+
+fn updateInputs() void {
+    pacman.in0.up = @bitCast(!rl.isKeyDown(.up));
+    pacman.in0.left = @bitCast(!rl.isKeyDown(.left));
+    pacman.in0.right = @bitCast(!rl.isKeyDown(.right));
+    pacman.in0.down = @bitCast(!rl.isKeyDown(.down));
+    pacman.in0.rack_advance = @bitCast(!rl.isKeyDown(.f2));
+    pacman.in0.coin_slot_1 = @bitCast(!rl.isKeyDown(.right_shift));
+    pacman.in0.coin_slot_2 = @bitCast(!rl.isKeyDown(.left_shift));
+    pacman.in0.credit_button = @bitCast(!rl.isKeyDown(.c));
+
+    if (rl.isKeyPressed(.f1)) {
+        pacman.in1.board_test = ~pacman.in1.board_test;
+    }
+    pacman.in1.p1_start = @bitCast(!rl.isKeyDown(.enter));
 }
 
 fn render() void {

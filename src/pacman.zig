@@ -62,8 +62,8 @@ pub var frame_buffer: [SCREEN_WIDTH * SCREEN_HEIGHT * BYTE_PER_PIXEL]u8 = undefi
 var vblank_enabled: bool = false;
 var vblank_data: u8 = 0;
 
-var in0: IN0 = .init();
-var in1: IN1 = .init();
+pub var in0: IN0 = .init();
+pub var in1: IN1 = .init();
 
 // ********** types ********** //
 
@@ -126,7 +126,7 @@ fn memRead(addr: u16) u8 {
         0x0000...0x4FFF => memory[addr],
         0x5000...0x503f => in0.getByte(), // IN0
         0x5040...0x507f => in1.getByte(), // IN1
-        0x5080...0x50bf => 0xff, // DIP switch
+        0x5080...0x50bf => 0b00001001, // DIP switch
 
         else => {
             log.err("Invalid read at: 0x{x:0>4}", .{addr});
